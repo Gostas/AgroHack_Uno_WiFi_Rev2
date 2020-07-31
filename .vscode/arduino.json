@@ -1,0 +1,6 @@
+{
+    "sketch": "AgroHack_Uno_WiFi.ino",
+    "board": "arduino:megaavr:uno2018",
+    "configuration": "mode=on",
+    "output": ".\\build"
+}

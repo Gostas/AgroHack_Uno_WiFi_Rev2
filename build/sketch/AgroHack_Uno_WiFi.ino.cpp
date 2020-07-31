@@ -1,3 +1,5 @@
+#include <Arduino.h>
+#line 1 "c:\\Users\\konst\\OneDrive\\Documents\\CS\\GitHub Repos\\AgroHack_Uno_WiFi_Rev2\\AgroHack_Uno_WiFi.ino"
 #include <WiFiNINA.h>
 #include <WiFiUdp.h>
 #include <Adafruit_Sensor.h>
@@ -44,6 +46,25 @@ const int moistSensorPin = A0;
 
 
 // grab the current time from internet time service
+#line 47 "c:\\Users\\konst\\OneDrive\\Documents\\CS\\GitHub Repos\\AgroHack_Uno_WiFi_Rev2\\AgroHack_Uno_WiFi.ino"
+unsigned long getNow();
+#line 103 "c:\\Users\\konst\\OneDrive\\Documents\\CS\\GitHub Repos\\AgroHack_Uno_WiFi_Rev2\\AgroHack_Uno_WiFi.ino"
+void splitConnectionString();
+#line 117 "c:\\Users\\konst\\OneDrive\\Documents\\CS\\GitHub Repos\\AgroHack_Uno_WiFi_Rev2\\AgroHack_Uno_WiFi.ino"
+void handleDirectMethod(String topicStr, String payloadStr);
+#line 145 "c:\\Users\\konst\\OneDrive\\Documents\\CS\\GitHub Repos\\AgroHack_Uno_WiFi_Rev2\\AgroHack_Uno_WiFi.ino"
+void callback(char* topic, byte* payload, unsigned int length);
+#line 160 "c:\\Users\\konst\\OneDrive\\Documents\\CS\\GitHub Repos\\AgroHack_Uno_WiFi_Rev2\\AgroHack_Uno_WiFi.ino"
+void connectMQTT(String deviceId, String username, String password);
+#line 186 "c:\\Users\\konst\\OneDrive\\Documents\\CS\\GitHub Repos\\AgroHack_Uno_WiFi_Rev2\\AgroHack_Uno_WiFi.ino"
+String createIotHubSASToken(char *key, String url, long expire);
+#line 215 "c:\\Users\\konst\\OneDrive\\Documents\\CS\\GitHub Repos\\AgroHack_Uno_WiFi_Rev2\\AgroHack_Uno_WiFi.ino"
+void readSensors();
+#line 220 "c:\\Users\\konst\\OneDrive\\Documents\\CS\\GitHub Repos\\AgroHack_Uno_WiFi_Rev2\\AgroHack_Uno_WiFi.ino"
+void setup();
+#line 269 "c:\\Users\\konst\\OneDrive\\Documents\\CS\\GitHub Repos\\AgroHack_Uno_WiFi_Rev2\\AgroHack_Uno_WiFi.ino"
+void loop();
+#line 47 "c:\\Users\\konst\\OneDrive\\Documents\\CS\\GitHub Repos\\AgroHack_Uno_WiFi_Rev2\\AgroHack_Uno_WiFi.ino"
 unsigned long getNow()
 {
     IPAddress address(129, 6, 15, 28); // time.nist.gov NTP server
@@ -125,6 +146,7 @@ void handleDirectMethod(String topicStr, String payloadStr)
     {
         // acknowledge receipt of the command
         String response_topic = (String)IOT_DIRECT_METHOD_RESPONSE_TOPIC;
+        char buff[20];
         
         response_topic.replace("{request_id}", msgId);
         response_topic.replace("{status}", "200");  //OK
