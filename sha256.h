@@ -7,7 +7,7 @@
 #define HASH_LENGTH 32
 #define BLOCK_LENGTH 64
 
-class Sha256 : public Print {
+class Sha256 : public arduino::Print {
 
   union Buffer {
     uint8_t b[BLOCK_LENGTH];
