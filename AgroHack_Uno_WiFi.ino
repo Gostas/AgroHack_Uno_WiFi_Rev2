@@ -14,8 +14,8 @@
 #include "./base64.h"
 #include "./parson.h"
 #include "./utils.h"
-
-#include "./configure.h"
+#include "./config.h"   //use different config file for github purposes-delete line when download
+//#include "./configure.h"  //uncomment when download
 
 bool wifiConnected = false;
 bool mqttConnected = false;
@@ -34,9 +34,10 @@ long lastTelemetryMillis = 0;
 long lastSensorReadMillis = 0;
 
 //telemetry data
-float tempValue,
-        pressureValue,
-        moistValue;
+float temperature, 
+    humidity,
+    soilMoisture,
+    pressure;
 
 //Sensors
 DHT dht(11, DHT11); //temperature and humidity sensor
@@ -211,8 +212,17 @@ String createIotHubSASToken(char *key, String url, long expire){
 }
 
 // reads the value from the onboard LSM6DS3 sensor
-void readSensors(){
+void readSensors()
+{
+    soilMoisture = analogRead(moistSensorPin);
 
+    soilMoisture = 100 - soilMoisture * 100 / 1023;   //sensor value: 0-1023; we want percentage
+
+    temperature = dht.readTemperature();
+
+    humidity = dht.readHumidity();
+
+    pressure = random(1, 100);
 }
 
 // arduino setup function called once at device startup
@@ -220,11 +230,16 @@ void setup()
 {
     Serial.begin(115200);
 
+    dht.begin();
+    
     // attempt to connect to Wifi network:
     Serial.print("WiFi Firmware version is ");
     Serial.println(WiFi.firmwareVersion());
+
     int status = WL_IDLE_STATUS;
+
     Serial_printf("Attempting to connect to Wi-Fi SSID: %s ", wifi_ssid);
+
     status = WiFi.begin(wifi_ssid, wifi_password);
     
     while ( status != WL_CONNECTED)
@@ -234,6 +249,8 @@ void setup()
     }
     Serial.println("\nConnected!");
 
+    delay(1000); //time for wifi and dht to setup
+
     splitConnectionString();
 
     // create SAS token and user name for connecting to MQTT broker
@@ -241,7 +258,7 @@ void setup()
     
     char *devKey = (char *)sharedAccessKey.c_str();
     
-    long expire = getNow() + 864000;
+    long expire = getNow() + 864000; //expire in 10 days
     
     String sasToken = createIotHubSASToken(devKey, url, expire);
     
@@ -267,31 +284,35 @@ void setup()
 // arduino message loop - do not do anything in here that will block the loop
 void loop()
 {
-    if (mqtt_client->connected()) {
+    if (mqtt_client->connected())
+    {
         // give the MQTT handler time to do it's thing
         mqtt_client->loop();
 
         // read the sensor values
-        if (millis() - lastSensorReadMillis > SENSOR_READ_INTERVAL) {
+        if (millis() - lastSensorReadMillis > SENSOR_READ_INTERVAL)
+        {
             readSensors();
             lastSensorReadMillis = millis();
         }
         
         // send telemetry values every 5 seconds
-        if (millis() - lastTelemetryMillis > TELEMETRY_SEND_INTERVAL) {
+        if (millis() - lastTelemetryMillis > TELEMETRY_SEND_INTERVAL)
+        {
             Serial.println("Sending telemetry ...");
+
             String topic = (String)IOT_EVENT_TOPIC;
             topic.replace("{device_id}", deviceId);
-            //char buff[10];
-            String payload = "{\"temp\": {temp}, \"accelerometerX\": {accelerometerX}, \"accelerometerY\": {accelerometerY}, \"accelerometerZ\": {accelerometerZ}, \"gyroscopeX\": {gyroscopeX}, \"gyroscopeY\": {gyroscopeY}, \"gyroscopeZ\": {gyroscopeZ}}";
-        //    payload.replace("{temp}", String(tempValue));
-        //    payload.replace("{accelerometerX}", String(accelValue[X]));
-        //    payload.replace("{accelerometerY}", String(accelValue[Y]));
-        //    payload.replace("{accelerometerZ}", String(accelValue[Z]));
-        //    payload.replace("{gyroscopeX}", String(gyroValue[X]));
-        //    payload.replace("{gyroscopeY}", String(gyroValue[Y]));
-        //    payload.replace("{gyroscopeZ}", String(gyroValue[Z]));
+
+            String payload = "{\"temperature\": {temp}, \"humidity\": {hum}, \"soil_moisture\": {moist}, \"pressure\": {p}}";
+
+            payload.replace("{temp}", String(temperature));
+            payload.replace("{hum}", String(humidity));
+            payload.replace("{moist}", String(soilMoisture));
+            payload.replace("{p}", String(pressure));
+            
             Serial_printf("\t%s\n", payload.c_str());
+
             mqtt_client->publish(topic.c_str(), payload.c_str());
 
             lastTelemetryMillis = millis();
