@@ -40,10 +40,10 @@ String username;
 WiFiSSLClient wifiClient1;
 PubSubClient *mqtt_client = NULL;
 
-#define TELEMETRY_SEND_INTERVAL 600000  // telemetry data sent every 10'
-#define SENSOR_READ_INTERVAL 595000     // read sensors every 9' 55'' 
-#define WEATHER_CHECK_INTERVAL 3600000  //check weather every 30'
-#define WATERING_CHECK_INTERVAL 900000  //check if watering nedded every 15'
+#define TELEMETRY_SEND_INTERVAL 30000 //600000  // telemetry data sent every 30'' or 10'
+#define SENSOR_READ_INTERVAL 25000 //595000     // read sensors every 25'' or 9' 55'' 
+#define WEATHER_CHECK_INTERVAL 35000 //3600000  //check weather every 35'' or 30'
+#define WATERING_CHECK_INTERVAL 20000 //900000  //check if watering needed every 20'' or 15'
 
 long lastTelemetryMillis = 0;
 long lastSensorReadMillis = 0;
@@ -304,9 +304,12 @@ void checkWeather()
             Serial.println("Rain predicted\n");
             willRain = true;
         }
+        else
+        {
+            Serial.println("Rain not predicted\n");
+            willRain = false;   
+        }
         
-        Serial.println("Rain not predicted\n");
-        willRain = false;   
     }
     else
     {
