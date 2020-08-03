@@ -40,7 +40,7 @@ String username;
 WiFiSSLClient wifiClient1;
 PubSubClient *mqtt_client = NULL;
 
-#define TELEMETRY_SEND_INTERVAL 30000  // telemetry data sent every 10'
+#define TELEMETRY_SEND_INTERVAL 600000  // telemetry data sent every 10'
 #define SENSOR_READ_INTERVAL 595000     // read sensors every 9' 55'' 
 #define WEATHER_CHECK_INTERVAL 3600000  //check weather every 30'
 #define WATERING_CHECK_INTERVAL 900000  //check if watering nedded every 15'
