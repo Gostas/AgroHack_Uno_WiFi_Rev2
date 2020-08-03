@@ -1,3 +1,10 @@
+/*  AgroHack on Arduino Uno WiFi Rev.2
+    with an addition:
+        * Ability for Arduino to connect to Azure Maps to get rain prediction
+            (in case you don't want to use Azure Functions to send weather prediction to Arduino)
+*/
+
+#include <SPI.h>
 #include <WiFiNINA.h>
 #include <WiFiUdp.h>
 #include <Adafruit_Sensor.h>
@@ -14,7 +21,7 @@
 #include "./base64.h"
 #include "./parson.h"
 #include "./utils.h"
-#include "./config.h"   //use different config file for github purposes-delete line when download
+#include "./config.h"   //use different config file to store secret data ;) - delete line when download
 //#include "./configure.h"  //uncomment when download
 
 bool wifiConnected = false;
@@ -24,24 +31,51 @@ String iothubHost;
 String deviceId;
 String sharedAccessKey;
 
-WiFiSSLClient wifiClient;
+String url;
+char *devKey;
+long expire;
+String sasToken;
+String username;
+
+WiFiSSLClient wifiClient1;
 PubSubClient *mqtt_client = NULL;
 
-#define TELEMETRY_SEND_INTERVAL 5000  // telemetry data sent every 5 seconds
-#define SENSOR_READ_INTERVAL  2500    // read sensors every 2.5 seconds
+#define TELEMETRY_SEND_INTERVAL 600000  // telemetry data sent every 10'
+#define SENSOR_READ_INTERVAL 595000     // read sensors every 9 mins 56'' 
+#define WEATHER_CHECK_INTERVAL 3600000  //check weather every 30'
+#define WATERING_CHECK_INTERVAL 900000  //check if watering nedded every 15'
 
 long lastTelemetryMillis = 0;
 long lastSensorReadMillis = 0;
+long lastWeatherCheck = 0;
+long lastWateringCheck = 0;
+
+bool willRain = false;
 
 //telemetry data
-float temperature, 
-    humidity,
-    soilMoisture,
-    pressure;
+float temperature = 27, 
+    humidity = 50,
+    soilMoisture = 50,
+    pressure = 101;
 
 //Sensors
 DHT dht(11, DHT11); //temperature and humidity sensor
 const int moistSensorPin = A0;
+
+#define WATERING_PIN 13     //plant watering indicator LED
+
+const float latitude = 38.00661;
+const float longitude = 23.771122;
+    
+static const char weatherServer[] = "atlas.microsoft.com";
+String request = "/weather/forecast/daily/json?api-version=1.0&query={latitude},{longitude}&subscription-key={maps_key}";
+
+// IoT Hub MQTT publish topics
+static const char IOT_EVENT_TOPIC[] = "devices/{device_id}/messages/events/";
+static const char IOT_DIRECT_METHOD_RESPONSE_TOPIC[] = "$iothub/methods/res/{status}/?$rid={request_id}";
+
+// IoT Hub MQTT subscribe topics
+static const char IOT_DIRECT_MESSAGE_TOPIC[] = "$iothub/methods/POST/#";
 
 
 // grab the current time from internet time service
@@ -93,13 +127,6 @@ unsigned long getNow()
     return 0;
 }
 
-// IoT Hub MQTT publish topics
-static const char IOT_EVENT_TOPIC[] = "devices/{device_id}/messages/events/";
-static const char IOT_DIRECT_METHOD_RESPONSE_TOPIC[] = "$iothub/methods/res/{status}/?$rid={request_id}";
-
-// IoT Hub MQTT subscribe topics
-static const char IOT_DIRECT_MESSAGE_TOPIC[] = "$iothub/methods/POST/#";
-
 // split the connection string into it's composite pieces
 void splitConnectionString()
 {
@@ -113,7 +140,6 @@ void splitConnectionString()
     sharedAccessKey = connStr.substring(sharedAccessKeyIndex + 17);
 }
 
-
 // process direct method requests
 void handleDirectMethod(String topicStr, String payloadStr)
 {
@@ -122,7 +148,7 @@ void handleDirectMethod(String topicStr, String payloadStr)
     
     Serial_printf("Direct method call:\n\tMethod Name: %s\n\tParameters: %s\n", methodName.c_str(), payloadStr.c_str());
     
-    if (strcmp(methodName.c_str(), "ECHO") == 0)
+    if (strcmp(methodName.c_str(), "NEEDS_WATERING") == 0)
     {
         // acknowledge receipt of the command
         String response_topic = (String)IOT_DIRECT_METHOD_RESPONSE_TOPIC;
@@ -130,16 +156,15 @@ void handleDirectMethod(String topicStr, String payloadStr)
         response_topic.replace("{request_id}", msgId);
         response_topic.replace("{status}", "200");  //OK
         mqtt_client->publish(response_topic.c_str(), "");
-
-        // output the message as morse code
-        JSON_Value *root_value = json_parse_string(payloadStr.c_str());
-        JSON_Object *root_obj = json_value_get_object(root_value);
-        const char* msg = json_object_get_string(root_obj, "displayedValue");
         
-        json_value_free(root_value);
+        //time to water plant!
+        if(payloadStr == "true")
+            digitalWrite(WATERING_PIN, HIGH);
+        else
+            digitalWrite(WATERING_PIN, LOW);
+        
     }
 }
-
 
 // callback for MQTT subscriptions
 void callback(char* topic, byte* payload, unsigned int length)
@@ -211,7 +236,7 @@ String createIotHubSASToken(char *key, String url, long expire){
     //return "SharedAccessSignature sig=" + url + "&se=" + String(expire) + "&sr=" + urlEncode((const char*)encodedSign);
 }
 
-// reads the value from the onboard LSM6DS3 sensor
+//read sensor data
 void readSensors()
 {
     soilMoisture = analogRead(moistSensorPin);
@@ -222,81 +247,204 @@ void readSensors()
 
     humidity = dht.readHumidity();
 
-    pressure = random(1, 100);
+    pressure = random(60, 250);
 }
 
-// arduino setup function called once at device startup
+//Connect to Azure Maps to get rain prediction
+void checkWeather()
+{
+    String result = "";
+    
+    if(wifiConnected)
+    {    
+        wifiClient1.stop();
+        wifiConnected = false;
+    }
+    if(mqttConnected)
+    {
+        mqtt_client->disconnect();
+        mqttConnected = false;
+    }
+
+    delay(1000);
+
+    Serial.print("\nStarting connection to Azure Maps...");
+
+    if(wifiClient1.connect(weatherServer, 443))
+    {
+        Serial.println("Connected!");
+        delay(1000);
+        wifiClient1.println("GET " + request + " HTTP/1.1");
+        wifiClient1.println("Host: atlas.microsoft.com");
+        wifiClient1.println("Connection: close");
+        wifiClient1.println();
+
+        while(!wifiClient1.available());    //wait until server responds
+
+        while(wifiClient1.available())
+            result += char(wifiClient1.read());
+
+        // Serial.println(wifiClient1.status());
+        // Serial.println(wifiClient1.remotePort());
+
+        wifiClient1.stop();
+        delay(2000);
+
+        int index1 = result.indexOf("category") + 11;
+        int index2 = result.indexOf("\"", index1);
+
+        String category = result.substring(index1, index2);
+
+        //Serial.println(result);
+        Serial.println(category);
+
+        if(category.indexOf("rain") != -1 || category.indexOf("thunderstorm") != -1)
+        {
+            Serial.println("Rain predicted\n");
+            willRain = true;
+        }
+        
+        Serial.println("Rain not predicted\n");
+        willRain = false;   
+    }
+    else
+    {
+        Serial.println("Couldn't connect to Azure Maps :(\n");
+        // Serial.println(wifiClient1.status());
+        // Serial.println(wifiClient1.remotePort());
+        wifiClient1.stop();
+        delay(1000);
+        willRain = false;
+    }
+}
+
+ //establish connection to IoT Hub server
+void connectToIoTHub()
+{
+    Serial.print("Connecting to IoT Hub server...");
+
+   if(wifiConnected)
+    {    
+        wifiClient1.stop();
+        wifiConnected = false;
+    }
+    if(mqttConnected)
+    {
+        mqtt_client->disconnect();
+        mqttConnected = false;
+    }
+    
+    delay(1000);
+
+    if(wifiClient1.connect(iothubHost.c_str(), 8883))
+    {
+        delay(2000);
+        wifiConnected = true;
+        // Serial.println(wifiClient1.status());
+        // Serial.println(wifiClient1.remotePort());
+
+        Serial.println("Connected!");
+        // Serial.println(wifiClient1.status());
+        // Serial.println(wifiClient1.remotePort());
+        
+        mqtt_client = new PubSubClient(iothubHost.c_str(), 8883, wifiClient1);
+        
+        connectMQTT(deviceId, username, sasToken);
+        
+        mqtt_client->setCallback(callback);
+
+        // add subscriptions - direct messages
+        mqtt_client->subscribe(IOT_DIRECT_MESSAGE_TOPIC);
+    }
+}
+
+//check to see if plant needs watering
+void needsWateringUpdate()
+{
+    if(!willRain && soilMoisture < 40)
+        digitalWrite(WATERING_PIN, HIGH);
+    else
+        digitalWrite(WATERING_PIN, LOW);
+}
+
+// arduino setup function: called once at device startup
 void setup()
 {
     Serial.begin(115200);
 
+    while(!Serial) ;    //wait for serial monitor to open
+
     dht.begin();
+
+    pinMode(WATERING_PIN, OUTPUT);
+
+    if (WiFi.status() == WL_NO_MODULE)
+    {
+        Serial.println("Communication with WiFi module failed!");
+        while (true);
+    }
     
     // attempt to connect to Wifi network:
     Serial.print("WiFi Firmware version is ");
     Serial.println(WiFi.firmwareVersion());
 
-    int status = WL_IDLE_STATUS;
-
     Serial_printf("Attempting to connect to Wi-Fi SSID: %s ", wifi_ssid);
 
-    status = WiFi.begin(wifi_ssid, wifi_password);
+    int status = WiFi.begin(wifi_ssid, wifi_password);
     
-    while ( status != WL_CONNECTED)
+    while (status != WL_CONNECTED)
     {
+        status = WiFi.begin(wifi_ssid, wifi_password);
         Serial.print(".");
         delay(1000);
     }
-    Serial.println("\nConnected!");
 
-    delay(1000); //time for wifi and dht to setup
+    Serial.println("\nConnected!\n");
+
+    delay(1000); //give time to wifi client and dht to setup
 
     splitConnectionString();
-
     // create SAS token and user name for connecting to MQTT broker
-    String url = iothubHost + urlEncode(String("/devices/" + deviceId).c_str());
-    
-    char *devKey = (char *)sharedAccessKey.c_str();
-    
-    long expire = getNow() + 864000; //expire in 10 days
-    
-    String sasToken = createIotHubSASToken(devKey, url, expire);
-    
-    String username = iothubHost + "/" + deviceId + "/api-version=2016-11-14";
-    //String username = iothubHost + "/" + deviceId + "/?api-version=2018-06-30";
+    url = iothubHost + urlEncode(String("/devices/" + deviceId).c_str());
+    devKey = (char *)sharedAccessKey.c_str();
+    expire = getNow() + 864000; //expire in 10 days
+    sasToken = createIotHubSASToken(devKey, url, expire);
+    username = iothubHost + "/" + deviceId + "/api-version=2016-11-14";
+    //username = iothubHost + "/" + deviceId + "/?api-version=2018-06-30";
 
-    // connect to the IoT Hub MQTT broker
-    wifiClient.connect(iothubHost.c_str(), 8883);
-    
-    mqtt_client = new PubSubClient(iothubHost.c_str(), 8883, wifiClient);
-    
-    connectMQTT(deviceId, username, sasToken);
-    
-    mqtt_client->setCallback(callback);
+    request.replace("{latitude}", String(latitude));
+    request.replace("{longitude}", String(longitude));
+    request.replace("{maps_key}", weatherPrimaryKey);
 
-    // // add subscriptions
-    mqtt_client->subscribe(IOT_DIRECT_MESSAGE_TOPIC); // direct messages
+    checkWeather();
+    lastWeatherCheck = millis();
 
-    // initialize timers
+    connectToIoTHub();
+
     lastTelemetryMillis = millis();
+    lastSensorReadMillis = millis();
+    lastWateringCheck = millis();
 }
 
 // arduino message loop - do not do anything in here that will block the loop
 void loop()
 {
+    if(!wifiClient1.connected())
+    {
+        Serial.println("Connection to IoT Central disrupted - Closing and restarting connection");
+        connectToIoTHub();
+    }
     if (mqtt_client->connected())
     {
         // give the MQTT handler time to do it's thing
         mqtt_client->loop();
 
-        // read the sensor values
         if (millis() - lastSensorReadMillis > SENSOR_READ_INTERVAL)
         {
             readSensors();
             lastSensorReadMillis = millis();
         }
         
-        // send telemetry values every 5 seconds
         if (millis() - lastTelemetryMillis > TELEMETRY_SEND_INTERVAL)
         {
             Serial.println("Sending telemetry ...");
@@ -317,5 +465,15 @@ void loop()
 
             lastTelemetryMillis = millis();
         }
+    }
+    if(millis() - lastWeatherCheck > WEATHER_CHECK_INTERVAL)
+    {
+        checkWeather();   
+        lastWeatherCheck = millis();
+    }
+    if(millis() - lastWateringCheck > WATERING_CHECK_INTERVAL)
+    {
+        needsWateringUpdate();
+        lastWateringCheck = millis();
     }
 }
