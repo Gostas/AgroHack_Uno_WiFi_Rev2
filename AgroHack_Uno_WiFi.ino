@@ -1,4 +1,4 @@
-/*  AgroHack on Arduino Uno WiFi Rev.2
+/*  AgroHack on Arduino Uno WiFi Rev. 2
     with an addition:
         * Ability for Arduino to connect to Azure Maps to get rain prediction
             (in case you don't want to use Azure Functions to send weather prediction to Arduino)
@@ -13,7 +13,7 @@
 /*  You need to go into this file and change this line from:
       #define MQTT_MAX_PACKET_SIZE 128
     to:
-      #define MQTT_MAX_PACKET_SIZE 2048
+      #define MQTT_MAX_PACKET_SIZE 512
 */
 #include <PubSubClient.h>
 
@@ -40,8 +40,8 @@ String username;
 WiFiSSLClient wifiClient1;
 PubSubClient *mqtt_client = NULL;
 
-#define TELEMETRY_SEND_INTERVAL 600000  // telemetry data sent every 10'
-#define SENSOR_READ_INTERVAL 595000     // read sensors every 9 mins 56'' 
+#define TELEMETRY_SEND_INTERVAL 30000  // telemetry data sent every 10'
+#define SENSOR_READ_INTERVAL 595000     // read sensors every 9' 55'' 
 #define WEATHER_CHECK_INTERVAL 3600000  //check weather every 30'
 #define WATERING_CHECK_INTERVAL 900000  //check if watering nedded every 15'
 
@@ -60,7 +60,7 @@ float temperature = 27,
 
 //Sensors
 DHT dht(11, DHT11); //temperature and humidity sensor
-const int moistSensorPin = A0;
+#define SOIL_MOISTURE_SENSOR_PIN A0
 
 #define WATERING_PIN 13     //plant watering indicator LED
 
@@ -78,7 +78,7 @@ static const char IOT_DIRECT_METHOD_RESPONSE_TOPIC[] = "$iothub/methods/res/{sta
 static const char IOT_DIRECT_MESSAGE_TOPIC[] = "$iothub/methods/POST/#";
 
 
-// grab the current time from internet time service
+// Grab the current time from internet time service
 unsigned long getNow()
 {
     IPAddress address(129, 6, 15, 28); // time.nist.gov NTP server
@@ -127,7 +127,7 @@ unsigned long getNow()
     return 0;
 }
 
-// split the connection string into it's composite pieces
+//Split the connection string into it's composite pieces
 void splitConnectionString()
 {
     String connStr = (String)iotConnStr;
@@ -140,7 +140,7 @@ void splitConnectionString()
     sharedAccessKey = connStr.substring(sharedAccessKeyIndex + 17);
 }
 
-// process direct method requests
+//Process direct method requests
 void handleDirectMethod(String topicStr, String payloadStr)
 {
     String msgId = topicStr.substring(topicStr.indexOf("$RID=") + 5);
@@ -166,7 +166,7 @@ void handleDirectMethod(String topicStr, String payloadStr)
     }
 }
 
-// callback for MQTT subscriptions
+//Callback for MQTT subscriptions
 void callback(char* topic, byte* payload, unsigned int length)
 {
     String topicStr = (String)topic;
@@ -181,7 +181,7 @@ void callback(char* topic, byte* payload, unsigned int length)
         Serial_printf("Unknown message arrived [%s]\nPayload contains: %s", topic, payloadStr.c_str());
 }
 
-// connect to Azure IoT Hub via MQTT
+//Connect to Azure IoT Hub via MQTT
 void connectMQTT(String deviceId, String username, String password)
 {
     mqtt_client->disconnect();
@@ -207,8 +207,9 @@ void connectMQTT(String deviceId, String username, String password)
     }
 }
 
-// create an IoT Hub SAS token for authentication
-String createIotHubSASToken(char *key, String url, long expire){
+//Create an IoT Hub SAS token for authentication
+String createIotHubSASToken(char *key, String url, long expire)
+{
     url.toLowerCase();
     String stringToSign = url + "\n" + String(expire);
     int keyLength = strlen(key);
@@ -239,7 +240,7 @@ String createIotHubSASToken(char *key, String url, long expire){
 //read sensor data
 void readSensors()
 {
-    soilMoisture = analogRead(moistSensorPin);
+    soilMoisture = analogRead(SOIL_MOISTURE_SENSOR_PIN);
 
     soilMoisture = 100 - soilMoisture * 100 / 1023;   //sensor value: 0-1023; we want percentage
 
@@ -312,13 +313,11 @@ void checkWeather()
         Serial.println("Couldn't connect to Azure Maps :(\n");
         // Serial.println(wifiClient1.status());
         // Serial.println(wifiClient1.remotePort());
-        wifiClient1.stop();
-        delay(1000);
         willRain = false;
     }
 }
 
- //establish connection to IoT Hub server
+ //Establish connection to IoT Hub server
 void connectToIoTHub()
 {
     Serial.print("Connecting to IoT Hub server...");
@@ -358,8 +357,8 @@ void connectToIoTHub()
     }
 }
 
-//check to see if plant needs watering
-void needsWateringUpdate()
+//Check to see if plant needs watering
+void checkWatering()
 {
     if(!willRain && soilMoisture < 40)
         digitalWrite(WATERING_PIN, HIGH);
@@ -473,7 +472,7 @@ void loop()
     }
     if(millis() - lastWateringCheck > WATERING_CHECK_INTERVAL)
     {
-        needsWateringUpdate();
+        checkWatering();
         lastWateringCheck = millis();
     }
 }
