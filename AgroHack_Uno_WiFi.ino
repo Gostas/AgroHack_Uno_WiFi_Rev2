@@ -19,7 +19,6 @@
 
 #include "./sha256.h"
 #include "./base64.h"
-#include "./parson.h"
 #include "./utils.h"
 #include "./config.h"   //use different config file to store secret data ;) - delete line when download
 //#include "./configure.h"  //uncomment when download
@@ -47,7 +46,7 @@ PubSubClient *mqtt_client = NULL;
 
 long lastTelemetryMillis = 0;
 long lastSensorReadMillis = 0;
-long lastWeatherCheck = 0;
+//long lastWeatherCheck = 0;
 long lastWateringCheck = 0;
 
 bool willRain = false;
@@ -159,9 +158,15 @@ void handleDirectMethod(String topicStr, String payloadStr)
         
         //time to water plant!
         if(payloadStr == "true")
+        {
             digitalWrite(WATERING_PIN, HIGH);
+            willRain = true;
+        }
         else
+        {
             digitalWrite(WATERING_PIN, LOW);
+            willRain = false;
+        }
         
     }
 }
@@ -252,6 +257,7 @@ void readSensors()
 }
 
 //Connect to Azure Maps to get rain prediction
+/*
 void checkWeather()
 {
     String result = "";
@@ -318,7 +324,7 @@ void checkWeather()
         // Serial.println(wifiClient1.remotePort());
         willRain = false;
     }
-}
+}*/
 
  //Establish connection to IoT Hub server
 void connectToIoTHub()
@@ -418,8 +424,8 @@ void setup()
     request.replace("{longitude}", String(longitude));
     request.replace("{maps_key}", weatherPrimaryKey);
 
-    checkWeather();
-    lastWeatherCheck = millis();
+    //checkWeather();
+    //lastWeatherCheck = millis();
 
     connectToIoTHub();
 
@@ -468,11 +474,11 @@ void loop()
             lastTelemetryMillis = millis();
         }
     }
-    if(millis() - lastWeatherCheck > WEATHER_CHECK_INTERVAL)
+    /*if(millis() - lastWeatherCheck > WEATHER_CHECK_INTERVAL)
     {
         checkWeather();   
         lastWeatherCheck = millis();
-    }
+    }*/
     if(millis() - lastWateringCheck > WATERING_CHECK_INTERVAL)
     {
         checkWatering();
