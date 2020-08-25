@@ -1,10 +1,17 @@
 # Implementing AgroHack on Arduino UNO WiFi Rev. 2
 
-## Whats this about
+## What's this about
 
 I was inspired by the AgroHack project (https://github.com/jimbobbennett/AgroHack) and wanted to see if it can be implemented on an even smaller device than the Raspberry Pi. The Arduino Uno WiFi Rev. 2 seemed like the perfect fit to get started with since it has an onboard WiFi and BLE module and more memory than the Uno (48 KB Flash, 6.144 KB SRAM, 256 Bytes EEPROM).
 
 The code was based on firedog1024's repository for connecting the Uno WiFi Rev. 2 to Azure IoT Central (https://github.com/firedog1024/arduino-uno-wifi-iotc).
+
+## What's new
+
+* Uses Arduino Uno WiFi Rev. 2, a cheaper platform than the Raspberry Pi
+* New implementation of interfacing with Azure IoT Hub in order to fit Uno Wifi's limited memory.
+* Identified a bug in the WiFiNINA library and raised an issue at the library's repo
+
 
 ## Features
 
@@ -33,6 +40,7 @@ This code requires a couple of libraries to be installed for it to compile. To i
 * Install library "PubSubClient"
 * Install library "DHT sensor library" by Adafruit
 
+
 Note - We need to increase the payload size limit in PubSubClient to allow for the larger size of MQTT messages from the Azure IoT Hub. Open the file at %HomePath%\Documents\Arduino\libraries\PubSubClient\src\PubSubClient.h in your favorite code editor. Change the line (line 26 in current version):
 
 ```
@@ -42,7 +50,7 @@ Note - We need to increase the payload size limit in PubSubClient to allow for t
 to:
 
 ```
-#define MQTT_MAX_PACKET_SIZE 2048
+#define MQTT_MAX_PACKET_SIZE 512
 ```
 
 Save the file and you have made the necessary fix.
@@ -97,9 +105,6 @@ static char wifi_password[] = "<replace with Wi-Fi password>";
 
 If the device is working correctly you should see output like this in the serial monitor that indicates data is successfully being transmitted to Azure IoT Central:
 
-```
-
-```
 
 
 ### Commands:
