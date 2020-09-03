@@ -23,6 +23,8 @@
 #include "./config.h"   //use different config file to store secret data ;) - delete line when download
 //#include "./configure.h"  //uncomment when download
 
+#define USE_AZURE_MAPS
+
 bool wifiConnected = false;
 bool mqttConnected = false;
 
@@ -39,14 +41,20 @@ String username;
 WiFiSSLClient wifiClient1;
 PubSubClient *mqtt_client = NULL;
 
-#define TELEMETRY_SEND_INTERVAL 30000 //600000  // telemetry data sent every 30'' or 10'
-#define SENSOR_READ_INTERVAL 25000 //595000     // read sensors every 25'' or 9' 55'' 
-#define WEATHER_CHECK_INTERVAL 35000 //3600000  //check weather every 35'' or 30'
+#define TELEMETRY_SEND_INTERVAL 10000 //600000  // telemetry data sent every 10'' or 10'
+#define SENSOR_READ_INTERVAL 5000 //595000     // read sensors every 5'' or 9' 55'' 
+#define WEATHER_CHECK_INTERVAL 90000 //3600000  //check weather every 90'' or 30'
 #define WATERING_CHECK_INTERVAL 20000 //900000  //check if watering needed every 20'' or 15'
 
 long lastTelemetryMillis = 0;
 long lastSensorReadMillis = 0;
-//long lastWeatherCheck = 0;
+
+#ifdef USE_AZURE_MAPS
+long lastWeatherCheck = 0;
+static const char weatherServer[] = "atlas.microsoft.com";
+String request = "/weather/forecast/daily/json?api-version=1.0&query={latitude},{longitude}&subscription-key={maps_key}";
+#endif
+
 long lastWateringCheck = 0;
 
 bool willRain = false;
@@ -62,12 +70,6 @@ DHT dht(11, DHT11); //temperature and humidity sensor
 #define SOIL_MOISTURE_SENSOR_PIN A0
 
 #define WATERING_PIN 13     //plant watering indicator LED
-
-const float latitude = 38.00661;
-const float longitude = 23.771122;
-    
-static const char weatherServer[] = "atlas.microsoft.com";
-String request = "/weather/forecast/daily/json?api-version=1.0&query={latitude},{longitude}&subscription-key={maps_key}";
 
 // IoT Hub MQTT publish topics
 static const char IOT_EVENT_TOPIC[] = "devices/{device_id}/messages/events/";
@@ -189,7 +191,11 @@ void callback(char* topic, byte* payload, unsigned int length)
 //Connect to Azure IoT Hub via MQTT
 void connectMQTT(String deviceId, String username, String password)
 {
-    mqtt_client->disconnect();
+     if(mqttConnected)
+    {
+        mqtt_client->disconnect();
+        mqttConnected = false;
+    }
 
     Serial.println("\nStarting IoT Hub connection");
     
@@ -246,7 +252,6 @@ String createIotHubSASToken(char *key, String url, long expire)
 void readSensors()
 {
     soilMoisture = analogRead(SOIL_MOISTURE_SENSOR_PIN);
-
     soilMoisture = 100 - soilMoisture * 100 / 1023;   //sensor value: 0-1023; we want percentage
 
     temperature = dht.readTemperature();
@@ -256,8 +261,8 @@ void readSensors()
     pressure = random(60, 250);
 }
 
+#ifdef USE_AZURE_MAPS
 //Connect to Azure Maps to get rain prediction
-/*
 void checkWeather()
 {
     String result = "";
@@ -324,7 +329,8 @@ void checkWeather()
         // Serial.println(wifiClient1.remotePort());
         willRain = false;
     }
-}*/
+}
+#endif
 
  //Establish connection to IoT Hub server
 void connectToIoTHub()
@@ -344,26 +350,30 @@ void connectToIoTHub()
     
     delay(1000);
 
-    if(wifiClient1.connect(iothubHost.c_str(), 8883))
+    while(!wifiClient1.connect(iothubHost.c_str(), 8883))
     {
-        delay(2000);
-        wifiConnected = true;
-        // Serial.println(wifiClient1.status());
-        // Serial.println(wifiClient1.remotePort());
-
-        Serial.println("Connected!");
-        // Serial.println(wifiClient1.status());
-        // Serial.println(wifiClient1.remotePort());
-        
-        mqtt_client = new PubSubClient(iothubHost.c_str(), 8883, wifiClient1);
-        
-        connectMQTT(deviceId, username, sasToken);
-        
-        mqtt_client->setCallback(callback);
-
-        // add subscriptions - direct messages
-        mqtt_client->subscribe(IOT_DIRECT_MESSAGE_TOPIC);
+        Serial.println("--");
+        delay(1000);
     }
+
+    delay(1000);
+
+    wifiConnected = true;
+    // Serial.println(wifiClient1.status());
+    // Serial.println(wifiClient1.remotePort());
+
+    Serial.println("Connected!");
+    // Serial.println(wifiClient1.status());
+    // Serial.println(wifiClient1.remotePort());
+    
+    mqtt_client = new PubSubClient(iothubHost.c_str(), 8883, wifiClient1);
+    
+    connectMQTT(deviceId, username, sasToken);
+    
+    mqtt_client->setCallback(callback);
+
+    // add subscriptions - direct messages
+    mqtt_client->subscribe(IOT_DIRECT_MESSAGE_TOPIC);
 }
 
 //Check to see if plant needs watering
@@ -409,8 +419,6 @@ void setup()
 
     Serial.println("\nConnected!\n");
 
-    delay(1000); //give time to wifi client and dht to setup
-
     splitConnectionString();
     // create SAS token and user name for connecting to MQTT broker
     url = iothubHost + urlEncode(String("/devices/" + deviceId).c_str());
@@ -420,12 +428,14 @@ void setup()
     username = iothubHost + "/" + deviceId + "/api-version=2016-11-14";
     //username = iothubHost + "/" + deviceId + "/?api-version=2018-06-30";
 
+    #ifdef USE_AZURE_MAPS
     request.replace("{latitude}", String(latitude));
     request.replace("{longitude}", String(longitude));
     request.replace("{maps_key}", weatherPrimaryKey);
 
-    //checkWeather();
-    //lastWeatherCheck = millis();
+    checkWeather();
+    lastWeatherCheck = millis();
+    #endif
 
     connectToIoTHub();
 
@@ -474,11 +484,13 @@ void loop()
             lastTelemetryMillis = millis();
         }
     }
-    /*if(millis() - lastWeatherCheck > WEATHER_CHECK_INTERVAL)
+    #ifdef USE_AZURE_MAPS
+    if(millis() - lastWeatherCheck > WEATHER_CHECK_INTERVAL)
     {
         checkWeather();   
         lastWeatherCheck = millis();
-    }*/
+    }
+    #endif
     if(millis() - lastWateringCheck > WATERING_CHECK_INTERVAL)
     {
         checkWatering();
