@@ -75,12 +75,21 @@ git clone https://github.com/Azure/dps-keygen.git
 in the cloned directory, navigate to the bin folder and choose the correct folder for your operating system (for Windows you will need to unzip the .zip file in the folder).
 
 We now need to grab some values from our application in IoT Central. Go to your application, click on "Devices", then "Environment Sensor" and then onto your device:
-![path to device in iot central](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/path_to_device_iot_central.png?raw=true)
+
+
+![path to device in iot central](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/path_to_device_iot_central_v3.png?raw=true)
+
+
 Now click on connect:
-![connect button](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/connect_button.png?raw=true)
+
+
+![connect button](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/connect_button_v3.png?raw=true)
+
 
 You will need to use the values from "Scope id", "Device id" and "primary key":
-![values to copy](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/device_connection_menu.png?raw=true)
+
+
+![device connection menu](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/device_connection_menu_v3.png?raw=true)
 
 Using the command line UX type:
 
@@ -114,18 +123,26 @@ const float latitude = 0.0;     //replace with your latitude
 const float longitude = 0.0;    //replace with your longitude
 ```
 
-### Telemetry:
+## Telemetry:
 
 If the device is working correctly you should see output like this in the serial monitor that indicates data is successfully being transmitted to Azure IoT Central:
-![serial monitor displaying telemetry sent](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/arduino_telemetry_sent.png?raw=true)
+
+![serial monitor displaying telemetry sent](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/arduino_telemetry_sent_v3.png?raw=true)
+
+
 
 Also, go to your Arduino Uno WiFi device on IoT Central and check if the telemetry is received:
-![iot central receives and displays telemetry](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/iot_central_environment_monitoring.png?raw=true)
 
-### Commands:
+![iot central receives and displays telemetry](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/iot_central_environment_monitoring_v3.png?raw=true)
+
+## Commands:
 
 You can send a command to the Arduino from IoT Central manually:
-![serial monitor displaying telemetry sent](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/iot_central_command.png?raw=true)
+
+![serial monitor displaying telemetry sent](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/iot_central_command_v2.png?raw=true)
+
+
 
 When the NEEDS_WATERING command gets received by the Arduino, the red LED should light up if it's not already on and you should see the following output on the serial monitor:
-![serial monitor displays command received](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/arduino_command_reveived.png?raw=true)
+
+![serial monitor displays command received](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/blob/master/assets/arduino_command_received.png?raw=true)
