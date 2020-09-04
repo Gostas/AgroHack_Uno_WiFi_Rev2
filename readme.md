@@ -11,11 +11,11 @@ The code was based on firedog1024's repository for connecting the Uno WiFi Rev. 
 * Uses Arduino Uno WiFi Rev. 2, a cheaper platform than the Raspberry Pi
 * New implementation of interfacing with Azure IoT Hub in order to fit Uno Wifi's limited memory.
 * Identified a bug in the WiFiNINA library and raised an issue at the library's repo
-
+* Perform the watering checks on board the Arduino in case connection to Azure breaks
 
 ## Features
 
-* Uses the onboard u-blox NINA-W102 radio module for communicating with Azure IoT Central using WiFi
+* Uses the onboard u-blox NINA-W102 radio module to communicate with Azure IoT Central using WiFi
 * Uses simple MQTT library to communicate with Azure IoT Central
 * IoT Central features supported
     * Telemetry data - Temperature, humidity and pressure
@@ -55,7 +55,7 @@ to:
 
 Save the file and you have made the necessary fix.
 
-Also, we need to create the application in Azure IoT Central. For that, I followed the guide provided in AgroHack (https://github.com/jimbobbennett/AgroHack/blob/master/Steps/CreateTheAppInIoTCentral.md).
+Also, we need to create the application in Azure IoT Central and setup Azure Analytics, Storage, Maps and Functions. For that, I followed the steps provided in AgroHack, beginning with creating the creating the application (https://github.com/jimbobbennett/AgroHack/blob/master/Steps/CreateTheAppInIoTCentral.md).
 
 ## Wiring
 
@@ -73,8 +73,12 @@ git clone https://github.com/Azure/dps-keygen.git
 in the cloned directory, navigate to the bin folder and choose the correct folder for your operating system (for Windows you will need to unzip the .zip file in the folder).
 
 We now need to grab some values from our application in IoT Central. Go to your application, click on "Devices", then "Environment Sensor" and then onto your device:
+![path to device in iot central](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/tree/master/assets/path_to_device_iot_central.png)
 Now click on connect:
-You will need to use the values from "Scope id", "Device id" and "primary key".
+![connect button](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/tree/master/assets/connect_button.png)
+
+You will need to use the values from "Scope id", "Device id" and "primary key":
+![values to copy](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/tree/master/assets/device_connection_menu.png)
 
 Using the command line UX type:
 
@@ -100,11 +104,26 @@ static char wifi_ssid[] = "<replace with Wi-Fi SSID>";
 static char wifi_password[] = "<replace with Wi-Fi password>";
 ```
 
+Finally, fill in the following variables with your house's geographical coordinates. You can find instructions on how to do so at https://github.com/jimbobbennett/AgroHack/blob/master/Steps/CheckWeatherWithAzureMaps.md.
+
+```
+//house coordinates
+const float latitude = 0.0;     //replace with your latitude
+const float longitude = 0.0;    //replace with your longitude
+```
 
 ### Telemetry:
 
 If the device is working correctly you should see output like this in the serial monitor that indicates data is successfully being transmitted to Azure IoT Central:
+![serial monitor displaying telemetry sent](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/tree/master/assets/arduino_telemetry_sent.png)
 
-
+Also, go to your Arduino Uno WiFi device on IoT Central and check if the telemetry is received:
+![iot central receives and displays telemetry](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/tree/master/assets/iot_central_environment_monitoring.png)
 
 ### Commands:
+
+You can send a command to the Arduino from IoT Central manually:
+![serial monitor displaying telemetry sent](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/tree/master/assets/iot_central_command.png)
+
+When the NEEDS_WATERING command gets received by the Arduino, the red LED should light up if it's not already on and you should see the following output on the serial monitor:
+![serial monitor displays command received](https://github.com/Gostas/AgroHack_Uno_WiFi_Rev2/tree/master/assets/arduino_command_reveived.png)
