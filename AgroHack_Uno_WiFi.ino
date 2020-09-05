@@ -1,7 +1,10 @@
 /*  AgroHack on Arduino Uno WiFi Rev. 2
-    with an addition:
+    with additions:
         * Ability for Arduino to connect to Azure Maps to get rain prediction
             (in case you don't want to use Azure Functions to send weather prediction to Arduino)
+            ** There is a bug in the WiFiNINA library which causes the SSL connections to Azure Maps
+                and IoT Hub to crash when the Azure Maps connection is initiated
+        * On board watering check for redundancy (in case connection to Azure breaks)
 */
 
 #include <SPI.h>
@@ -23,7 +26,7 @@
 #include "./config.h"   //use different config file to store secret data ;) - delete line when download
 //#include "./configure.h"  //uncomment when download
 
-#define USE_AZURE_MAPS
+//#define USE_AZURE_MAPS  //un-comment to connect to Azure Maps
 
 bool wifiConnected = false;
 bool mqttConnected = false;
@@ -447,11 +450,11 @@ void setup()
 // arduino message loop - do not do anything in here that will block the loop
 void loop()
 {
-    if(!wifiClient1.connected())
-    {
-        Serial.println("Connection to IoT Central disrupted - Closing and restarting connection");
-        connectToIoTHub();
-    }
+    // if(!wifiClient1.connected())
+    // {
+    //     Serial.println("Connection to IoT Central disrupted - Closing and restarting connection");
+    //     connectToIoTHub();
+    // }
     if (mqtt_client->connected())
     {
         // give the MQTT handler time to do it's thing
