@@ -1,7 +1,6 @@
 /*  AgroHack on Arduino Uno WiFi Rev. 2
-    with an addition:
-        * Ability for Arduino to connect to Azure Maps to get rain prediction
-            (in case you don't want to use Azure Functions to send weather prediction to Arduino)
+    with additions:
+        * On board watering check for redundancy (in case connection to Azure breaks)
 */
 
 #include <SPI.h>
@@ -23,8 +22,6 @@
 #include "./config.h"   //use different config file to store secret data ;) - delete line when download
 //#include "./configure.h"  //uncomment when download
 
-#define USE_AZURE_MAPS
-
 bool wifiConnected = false;
 bool mqttConnected = false;
 
@@ -43,17 +40,10 @@ PubSubClient *mqtt_client = NULL;
 
 #define TELEMETRY_SEND_INTERVAL 10000 //600000  // telemetry data sent every 10'' or 10'
 #define SENSOR_READ_INTERVAL 5000 //595000     // read sensors every 5'' or 9' 55'' 
-#define WEATHER_CHECK_INTERVAL 90000 //3600000  //check weather every 90'' or 30'
 #define WATERING_CHECK_INTERVAL 20000 //900000  //check if watering needed every 20'' or 15'
 
 long lastTelemetryMillis = 0;
 long lastSensorReadMillis = 0;
-
-#ifdef USE_AZURE_MAPS
-long lastWeatherCheck = 0;
-static const char weatherServer[] = "atlas.microsoft.com";
-String request = "/weather/forecast/daily/json?api-version=1.0&query={latitude},{longitude}&subscription-key={maps_key}";
-#endif
 
 long lastWateringCheck = 0;
 
@@ -261,77 +251,6 @@ void readSensors()
     pressure = random(60, 250);
 }
 
-#ifdef USE_AZURE_MAPS
-//Connect to Azure Maps to get rain prediction
-void checkWeather()
-{
-    String result = "";
-    
-    if(wifiConnected)
-    {    
-        wifiClient1.stop();
-        wifiConnected = false;
-    }
-    if(mqttConnected)
-    {
-        mqtt_client->disconnect();
-        mqttConnected = false;
-    }
-
-    delay(1000);
-
-    Serial.print("\nStarting connection to Azure Maps...");
-
-    if(wifiClient1.connect(weatherServer, 443))
-    {
-        Serial.println("Connected!");
-        delay(1000);
-        wifiClient1.println("GET " + request + " HTTP/1.1");
-        wifiClient1.println("Host: atlas.microsoft.com");
-        wifiClient1.println("Connection: close");
-        wifiClient1.println();
-
-        while(!wifiClient1.available());    //wait until server responds
-
-        while(wifiClient1.available())
-            result += char(wifiClient1.read());
-
-        // Serial.println(wifiClient1.status());
-        // Serial.println(wifiClient1.remotePort());
-
-        wifiClient1.stop();
-        delay(2000);
-
-        int index1 = result.indexOf("category") + 11;
-        int index2 = result.indexOf("\"", index1);
-
-        String category = result.substring(index1, index2);
-
-        //Serial.println(result);
-        Serial.println(category);
-
-        if(category.indexOf("rain") != -1 || category.indexOf("thunderstorm") != -1)
-        {
-            Serial.println("Rain predicted\n");
-            willRain = true;
-        }
-        else
-        {
-            Serial.println("Rain not predicted\n");
-            willRain = false;   
-        }
-        
-    }
-    else
-    {
-        Serial.println("Couldn't connect to Azure Maps :(\n");
-        // Serial.println(wifiClient1.status());
-        // Serial.println(wifiClient1.remotePort());
-        willRain = false;
-    }
-}
-#endif
-
  //Establish connection to IoT Hub server
 void connectToIoTHub()
 {
@@ -428,15 +347,6 @@ void setup()
     username = iothubHost + "/" + deviceId + "/api-version=2016-11-14";
     //username = iothubHost + "/" + deviceId + "/?api-version=2018-06-30";
 
-    #ifdef USE_AZURE_MAPS
-    request.replace("{latitude}", String(latitude));
-    request.replace("{longitude}", String(longitude));
-    request.replace("{maps_key}", weatherPrimaryKey);
-
-    checkWeather();
-    lastWeatherCheck = millis();
-    #endif
-
     connectToIoTHub();
 
     lastTelemetryMillis = millis();
@@ -447,11 +357,11 @@ void setup()
 // arduino message loop - do not do anything in here that will block the loop
 void loop()
 {
-    if(!wifiClient1.connected())
-    {
-        Serial.println("Connection to IoT Central disrupted - Closing and restarting connection");
-        connectToIoTHub();
-    }
+    // if(!wifiClient1.connected())
+    // {
+    //     Serial.println("Connection to IoT Central disrupted - Closing and restarting connection");
+    //     connectToIoTHub();
+    // }
     if (mqtt_client->connected())
     {
         // give the MQTT handler time to do it's thing
@@ -484,13 +394,6 @@ void loop()
             lastTelemetryMillis = millis();
         }
     }
-    #ifdef USE_AZURE_MAPS
-    if(millis() - lastWeatherCheck > WEATHER_CHECK_INTERVAL)
-    {
-        checkWeather();   
-        lastWeatherCheck = millis();
-    }
-    #endif
     if(millis() - lastWateringCheck > WATERING_CHECK_INTERVAL)
     {
         checkWatering();
