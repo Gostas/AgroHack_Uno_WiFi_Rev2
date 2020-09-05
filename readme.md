@@ -1,5 +1,9 @@
 # Implementing AgroHack on Arduino UNO WiFi Rev. 2
 
+## Experimental branch
+
+I want to initiate a connection to Azure Maps to get the weather prediction directly (in addition to through Azure Function), but a bug in the WiFiNINA library causes both connections (to Azure Maps and the existing, persistent connection to IoT Hub) to crash.
+
 ## What's this about
 
 I was inspired by the AgroHack project (https://github.com/jimbobbennett/AgroHack) and wanted to see if it can be implemented on an even smaller device than the Raspberry Pi. The Arduino Uno WiFi Rev. 2 seemed like the perfect fit to get started with since it has an onboard WiFi and BLE module and more memory than the Uno (48 KB Flash, 6.144 KB SRAM, 256 Bytes EEPROM).
