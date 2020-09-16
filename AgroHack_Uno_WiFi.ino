@@ -47,8 +47,6 @@ long lastSensorReadMillis = 0;
 
 long lastWateringCheck = 0;
 
-bool willRain = false;
-
 //telemetry data
 float temperature = 27, 
     humidity = 50,
@@ -57,6 +55,7 @@ float temperature = 27,
 
 //Sensors
 DHT dht(11, DHT11); //temperature and humidity sensor
+
 #define SOIL_MOISTURE_SENSOR_PIN A0
 
 #define WATERING_PIN 13     //plant watering indicator LED
@@ -147,18 +146,14 @@ void handleDirectMethod(String topicStr, String payloadStr)
         response_topic.replace("{request_id}", msgId);
         response_topic.replace("{status}", "200");  //OK
         mqtt_client->publish(response_topic.c_str(), "");
+
+        lastWateringCheck = millis();
         
         //time to water plant!
         if(payloadStr == "true")
-        {
             digitalWrite(WATERING_PIN, HIGH);
-            willRain = true;
-        }
         else
-        {
             digitalWrite(WATERING_PIN, LOW);
-            willRain = false;
-        }
         
     }
 }
@@ -231,10 +226,11 @@ String createIotHubSASToken(char *key, String url, long expire)
 
     Serial.println("SAS Token created!");
 
+    //this works
     return "SharedAccessSignature sr=" + url + "&sig=" + urlEncode((const char*)encodedSign) + "&se=" + String(expire);
     
     //SharedAccessSignature sig={signature-string}&se={expiry}&sr={URL-encoded-resourceURI}  (From https://docs.microsoft.com/en-us/azure/iot-hub/iot-hub-mqtt-support#using-the-mqtt-protocol-directly-as-a-device)
-    
+    //the above format doesn't work for some reason
     //return "SharedAccessSignature sig=" + url + "&se=" + String(expire) + "&sr=" + urlEncode((const char*)encodedSign);
 }
 
@@ -298,7 +294,7 @@ void connectToIoTHub()
 //Check to see if plant needs watering
 void checkWatering()
 {
-    if(!willRain && soilMoisture < 40)
+    if(soilMoisture < 40)
         digitalWrite(WATERING_PIN, HIGH);
     else
         digitalWrite(WATERING_PIN, LOW);
@@ -331,9 +327,9 @@ void setup()
     
     while (status != WL_CONNECTED)
     {
-        status = WiFi.begin(wifi_ssid, wifi_password);
-        Serial.print(".");
+         Serial.print(".");
         delay(1000);
+        status = WiFi.begin(wifi_ssid, wifi_password);
     }
 
     Serial.println("\nConnected!\n");
@@ -351,17 +347,23 @@ void setup()
 
     lastTelemetryMillis = millis();
     lastSensorReadMillis = millis();
-    lastWateringCheck = millis();
 }
 
 // arduino message loop - do not do anything in here that will block the loop
 void loop()
 {
-    // if(!wifiClient1.connected())
-    // {
-    //     Serial.println("Connection to IoT Central disrupted - Closing and restarting connection");
-    //     connectToIoTHub();
-    // }
+    if(!wifiClient1.connected())
+    {
+        //  this might block the loop, so don't do it
+        //  Serial.println("Connection to IoT Central disrupted - Closing and restarting connection");
+        //  connectToIoTHub();
+
+        if(lastWateringCheck < WATERING_CHECK_INTERVAL)
+        {
+            checkWatering();
+            lastWateringCheck = millis();
+        }
+    }
     if (mqtt_client->connected())
     {
         // give the MQTT handler time to do it's thing
@@ -393,10 +395,5 @@ void loop()
 
             lastTelemetryMillis = millis();
         }
-    }
-    if(millis() - lastWateringCheck > WATERING_CHECK_INTERVAL)
-    {
-        checkWatering();
-        lastWateringCheck = millis();
     }
 }
