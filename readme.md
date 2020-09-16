@@ -20,7 +20,6 @@ The code was based on firedog1024's repository for connecting the Uno WiFi Rev. 
 * IoT Central features supported
     * Telemetry data - Temperature, humidity and pressure
     * Commands - Send a message to the device to turn on LED to indicate it's time to water the plant
-* Weather prediction using Azure Maps
 
 ## Installation
 
@@ -41,7 +40,7 @@ This code requires a couple of libraries to be installed for it to compile. To i
 * Install library "DHT sensor library" by Adafruit
 
 
-Note - We need to increase the payload size limit in PubSubClient to allow for the larger size of MQTT messages from the Azure IoT Hub. Open the file at %HomePath%\Documents\Arduino\libraries\PubSubClient\src\PubSubClient.h in your favorite code editor. Change the line (line 26 in current version):
+***Note*** - We need to increase the payload size limit in PubSubClient to allow for the larger size of MQTT messages from Azure IoT Hub. I have found that the crossover point where the Arduino can't connect over MQTT is somewhere between 256 and 512 bytes. Open the file at %HomePath%\Documents\Arduino\libraries\PubSubClient\src\PubSubClient.h in your favorite code editor. Change the line (line 26 in current version):
 
 ```
 #define MQTT_MAX_PACKET_SIZE 128
