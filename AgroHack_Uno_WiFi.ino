@@ -174,7 +174,7 @@ void callback(char* topic, byte* payload, unsigned int length)
 }
 
 //Connect to Azure IoT Hub via MQTT
-void connectMQTT(String deviceId, String username, String password)
+void connectMQTT()
 {
      if(mqttConnected)
     {
@@ -188,7 +188,7 @@ void connectMQTT(String deviceId, String username, String password)
     
     while(retry < 10 && !mqtt_client->connected())
     {     
-        if (mqtt_client->connect(deviceId.c_str(), username.c_str(), password.c_str()))
+        if (mqtt_client->connect(deviceId.c_str(), username.c_str(), sasToken.c_str()))
         {
                 Serial.println("===> mqtt connected");
                 mqttConnected = true;
@@ -204,16 +204,16 @@ void connectMQTT(String deviceId, String username, String password)
 }
 
 //Create an IoT Hub SAS token for authentication
-String createIotHubSASToken(char *key, String url, long expire)
+String createIotHubSASToken(long expire)
 {
     url.toLowerCase();
     String stringToSign = url + "\n" + String(expire);
-    int keyLength = strlen(key);
+    int keyLength = strlen(devKey);
 
-    int decodedKeyLength = base64_dec_len(key, keyLength);
+    int decodedKeyLength = base64_dec_len(devKey, keyLength);
     char decodedKey[decodedKeyLength];
 
-    base64_decode(decodedKey, key, keyLength);
+    base64_decode(decodedKey, devKey, keyLength);
 
     Sha256 *sha256 = new Sha256();
     sha256->initHmac((const uint8_t*)decodedKey, (size_t)decodedKeyLength);
@@ -283,7 +283,7 @@ void connectToIoTHub()
     
     mqtt_client = new PubSubClient(iothubHost.c_str(), 8883, wifiClient1);
     
-    connectMQTT(deviceId, username, sasToken);
+    connectMQTT();
     
     mqtt_client->setCallback(callback);
 
@@ -351,7 +351,7 @@ void setup()
     url = iothubHost + urlEncode(String("/devices/" + deviceId).c_str());
     devKey = (char *)sharedAccessKey.c_str();
     expire = curr_time + 864000; //expire in 10 days
-    sasToken = createIotHubSASToken(devKey, url, expire);
+    sasToken = createIotHubSASToken(expire);
     username = iothubHost + "/" + deviceId + "/api-version=2016-11-14";
     //username = iothubHost + "/" + deviceId + "/?api-version=2018-06-30";
 
@@ -378,34 +378,39 @@ void loop()
     }
     else
     {
-        // give the MQTT handler time to do it's thing
-        mqtt_client->loop();
-
-        if (millis() - lastSensorReadMillis > SENSOR_READ_INTERVAL)
+        if(mqtt_client->connected())
         {
-            readSensors();
-            lastSensorReadMillis = millis();
-        }
-        
-        if (millis() - lastTelemetryMillis > TELEMETRY_SEND_INTERVAL)
-        {
-            Serial.println("Sending telemetry ...");
+            // give the MQTT handler time to do it's thing
+            mqtt_client->loop();
 
-            String topic = (String)IOT_EVENT_TOPIC;
-            topic.replace("{device_id}", deviceId);
-
-            String payload = "{\"temperature\": {temp}, \"humidity\": {hum}, \"soil_moisture\": {moist}, \"pressure\": {p}}";
-
-            payload.replace("{temp}", String(temperature));
-            payload.replace("{hum}", String(humidity));
-            payload.replace("{moist}", String(soilMoisture));
-            payload.replace("{p}", String(pressure));
+            if (millis() - lastSensorReadMillis > SENSOR_READ_INTERVAL)
+            {
+                readSensors();
+                lastSensorReadMillis = millis();
+            }
             
-            Serial_printf("\t%s\n", payload.c_str());
+            if (millis() - lastTelemetryMillis > TELEMETRY_SEND_INTERVAL)
+            {
+                Serial.println("Sending telemetry ...");
 
-            mqtt_client->publish(topic.c_str(), payload.c_str());
+                String topic = (String)IOT_EVENT_TOPIC;
+                topic.replace("{device_id}", deviceId);
 
-            lastTelemetryMillis = millis();
+                String payload = "{\"temperature\": {temp}, \"humidity\": {hum}, \"soil_moisture\": {moist}, \"pressure\": {p}}";
+
+                payload.replace("{temp}", String(temperature));
+                payload.replace("{hum}", String(humidity));
+                payload.replace("{moist}", String(soilMoisture));
+                payload.replace("{p}", String(pressure));
+                
+                Serial_printf("\t%s\n", payload.c_str());
+
+                mqtt_client->publish(topic.c_str(), payload.c_str());
+
+                lastTelemetryMillis = millis();
+            }
         }
+        else
+            connectMQTT();
     }
 }
