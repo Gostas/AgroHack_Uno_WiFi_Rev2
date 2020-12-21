@@ -187,7 +187,7 @@ void callback(char* topic, byte* payload, unsigned int length)
 }
 
 //Connect to Azure IoT Hub via MQTT
-void connectMQTT(String deviceId, String username, String password)
+void connectMQTT()
 {
     Serial.println("\nStarting IoT Hub connection");
     
@@ -195,7 +195,7 @@ void connectMQTT(String deviceId, String username, String password)
     
     while(retry < 10 && !mqtt_client->connected())
     {     
-        if (mqtt_client->connect(deviceId.c_str(), username.c_str(), password.c_str()))
+        if (mqtt_client->connect(deviceId.c_str(), username.c_str(), sasToken.c_str()))
         {
                 Serial.println("===> mqtt connected");
         }
@@ -210,16 +210,16 @@ void connectMQTT(String deviceId, String username, String password)
 }
 
 //Create an IoT Hub SAS token for authentication
-String createIotHubSASToken(char *key, String url, long expire)
+String createIotHubSASToken(long expire)
 {
     url.toLowerCase();
     String stringToSign = url + "\n" + String(expire);
-    int keyLength = strlen(key);
+    int keyLength = strlen(devKey);
 
-    int decodedKeyLength = base64_dec_len(key, keyLength);
+    int decodedKeyLength = base64_dec_len(devKey, keyLength);
     char decodedKey[decodedKeyLength];
 
-    base64_decode(decodedKey, key, keyLength);
+    base64_decode(decodedKey, devKey, keyLength);
 
     Sha256 *sha256 = new Sha256();
     sha256->initHmac((const uint8_t*)decodedKey, (size_t)decodedKeyLength);
@@ -311,7 +311,7 @@ void connectToIoTHub()
         
         mqtt_client = new PubSubClient(iothubHost.c_str(), 8883, wifiClient1);
         
-        connectMQTT(deviceId, username, sasToken);
+        connectMQTT();
         
         mqtt_client->setCallback(callback);
 
@@ -387,7 +387,7 @@ void setup()
     url = iothubHost + urlEncode(String("/devices/" + deviceId).c_str());
     devKey = (char *)sharedAccessKey.c_str();
     expire = curr_time + 864000; //expire in 10 days
-    sasToken = createIotHubSASToken(devKey, url, expire);
+    sasToken = createIotHubSASToken(expire);
     username = iothubHost + "/" + deviceId + "/api-version=2016-11-14";
     //username = iothubHost + "/" + deviceId + "/?api-version=2018-06-30";
 
