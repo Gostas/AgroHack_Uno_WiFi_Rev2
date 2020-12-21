@@ -6,10 +6,7 @@
                 and IoT Hub to crash when the Azure Maps connection is initiated
         * On board watering check for redundancy (in case connection to Azure breaks)
 */
-
-#include <SPI.h>
 #include <WiFiNINA.h>
-#include <WiFiUdp.h>
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
 
@@ -26,10 +23,13 @@
 #include "./config.h"   //use different config file to store secret data ;) - delete line when download
 //#include "./configure.h"  //uncomment when download
 
-//#define USE_AZURE_MAPS  //un-comment to connect to Azure Maps
+//Sensors
+DHT dht(11, DHT11); //temperature and humidity sensor
+#define SOIL_MOISTURE_SENSOR_PIN A0
 
-bool wifiConnected = false;
-bool mqttConnected = false;
+#define WATERING_PIN 13     //plant watering indicator LED
+
+#define USE_AZURE_MAPS  //un-comment to connect to Azure Maps
 
 String iothubHost;
 String deviceId;
@@ -68,12 +68,6 @@ float temperature = 27,
     soilMoisture = 50,
     pressure = 101;
 
-//Sensors
-DHT dht(11, DHT11); //temperature and humidity sensor
-#define SOIL_MOISTURE_SENSOR_PIN A0
-
-#define WATERING_PIN 13     //plant watering indicator LED
-
 // IoT Hub MQTT publish topics
 static const char IOT_EVENT_TOPIC[] = "devices/{device_id}/messages/events/";
 static const char IOT_DIRECT_METHOD_RESPONSE_TOPIC[] = "$iothub/methods/res/{status}/?$rid={request_id}";
@@ -83,7 +77,7 @@ static const char IOT_DIRECT_MESSAGE_TOPIC[] = "$iothub/methods/POST/#";
 
 
 // Grab the current time from internet time service
-unsigned long getNow()
+/*unsigned long getNow()
 {
     IPAddress address(129, 6, 15, 28); // time.nist.gov NTP server
     const int NTP_PACKET_SIZE = 48;
@@ -123,13 +117,14 @@ unsigned long getNow()
             Udp.stop();
             
             Serial.println("Got current time!");
-            
+            Serial.println(secsSince1900 - 2208988800UL);
+            Serial.println(WiFi.getTime());
             return (secsSince1900 - 2208988800UL);
         }
     }
     Serial.println("Failed to get current time. :(");
     return 0;
-}
+}*/
 
 //Split the connection string into it's composite pieces
 void splitConnectionString()
@@ -194,12 +189,6 @@ void callback(char* topic, byte* payload, unsigned int length)
 //Connect to Azure IoT Hub via MQTT
 void connectMQTT(String deviceId, String username, String password)
 {
-     if(mqttConnected)
-    {
-        mqtt_client->disconnect();
-        mqttConnected = false;
-    }
-
     Serial.println("\nStarting IoT Hub connection");
     
     int retry = 0;
@@ -209,7 +198,6 @@ void connectMQTT(String deviceId, String username, String password)
         if (mqtt_client->connect(deviceId.c_str(), username.c_str(), password.c_str()))
         {
                 Serial.println("===> mqtt connected");
-                mqttConnected = true;
         }
         else
         {
@@ -270,40 +258,23 @@ void checkWeather()
 {
     String result = "";
     
-    if(wifiConnected)
-    {    
-        wifiClient1.stop();
-        wifiConnected = false;
-    }
-    if(mqttConnected)
-    {
-        mqtt_client->disconnect();
-        mqttConnected = false;
-    }
-
-    delay(1000);
+    wifiClient1.stop();
 
     Serial.print("\nStarting connection to Azure Maps...");
 
-    if(wifiClient1.connect(weatherServer, 443))
-    {
+    if(wifiClient1.connect(weatherServer, 443)){
         Serial.println("Connected!");
-        delay(1000);
         wifiClient1.println("GET " + request + " HTTP/1.1");
         wifiClient1.println("Host: atlas.microsoft.com");
         wifiClient1.println("Connection: close");
         wifiClient1.println();
 
-        while(!wifiClient1.available());    //wait until server responds
+        while(!wifiClient1.available()) delay(500);    //wait until server responds
 
         while(wifiClient1.available())
             result += char(wifiClient1.read());
 
-        // Serial.println(wifiClient1.status());
-        // Serial.println(wifiClient1.remotePort());
-
         wifiClient1.stop();
-        delay(2000);
 
         int index1 = result.indexOf("category") + 11;
         int index2 = result.indexOf("\"", index1);
@@ -313,23 +284,17 @@ void checkWeather()
         //Serial.println(result);
         Serial.println(category);
 
-        if(category.indexOf("rain") != -1 || category.indexOf("thunderstorm") != -1)
-        {
+        if(category.indexOf("rain") != -1 || category.indexOf("thunderstorm") != -1){
             Serial.println("Rain predicted\n");
             willRain = true;
         }
-        else
-        {
+        else{
             Serial.println("Rain not predicted\n");
             willRain = false;   
-        }
-        
+        } 
     }
-    else
-    {
+    else{
         Serial.println("Couldn't connect to Azure Maps :(\n");
-        // Serial.println(wifiClient1.status());
-        // Serial.println(wifiClient1.remotePort());
         willRain = false;
     }
 }
@@ -340,43 +305,24 @@ void connectToIoTHub()
 {
     Serial.print("Connecting to IoT Hub server...");
 
-   if(wifiConnected)
-    {    
-        wifiClient1.stop();
-        wifiConnected = false;
-    }
-    if(mqttConnected)
+    if(wifiClient1.connect(iothubHost.c_str(), 8883))
     {
-        mqtt_client->disconnect();
-        mqttConnected = false;
-    }
-    
-    delay(1000);
+        Serial.println("Connected!");
+        
+        mqtt_client = new PubSubClient(iothubHost.c_str(), 8883, wifiClient1);
+        
+        connectMQTT(deviceId, username, sasToken);
+        
+        mqtt_client->setCallback(callback);
 
-    while(!wifiClient1.connect(iothubHost.c_str(), 8883))
+        // add subscriptions - direct messages
+        mqtt_client->subscribe(IOT_DIRECT_MESSAGE_TOPIC);
+    }
+    else
     {
-        Serial.println("--");
-        delay(1000);
+        Serial.println("error :(");
+        while(1);   //do nothing forevermore
     }
-
-    delay(1000);
-
-    wifiConnected = true;
-    // Serial.println(wifiClient1.status());
-    // Serial.println(wifiClient1.remotePort());
-
-    Serial.println("Connected!");
-    // Serial.println(wifiClient1.status());
-    // Serial.println(wifiClient1.remotePort());
-    
-    mqtt_client = new PubSubClient(iothubHost.c_str(), 8883, wifiClient1);
-    
-    connectMQTT(deviceId, username, sasToken);
-    
-    mqtt_client->setCallback(callback);
-
-    // add subscriptions - direct messages
-    mqtt_client->subscribe(IOT_DIRECT_MESSAGE_TOPIC);
 }
 
 //Check to see if plant needs watering
@@ -391,6 +337,7 @@ void checkWatering()
 // arduino setup function: called once at device startup
 void setup()
 {
+    unsigned long curr_time;
     Serial.begin(115200);
 
     while(!Serial) ;    //wait for serial monitor to open
@@ -406,27 +353,40 @@ void setup()
     }
     
     // attempt to connect to Wifi network:
-    Serial.print("WiFi Firmware version is ");
+    Serial.print("NINA-W102 Firmware version is ");
     Serial.println(WiFi.firmwareVersion());
+    Serial.print("Latest firmware version is ");
+    Serial.println(WIFI_FIRMWARE_LATEST_VERSION);
 
     Serial_printf("Attempting to connect to Wi-Fi SSID: %s ", wifi_ssid);
+    int status;
 
-    int status = WiFi.begin(wifi_ssid, wifi_password);
-    
-    while (status != WL_CONNECTED)
+    do
     {
         status = WiFi.begin(wifi_ssid, wifi_password);
+        delay(10000);   //wait 10 seconds for WiFi connection to setup
         Serial.print(".");
-        delay(1000);
-    }
+    }while (status != WL_CONNECTED);
 
     Serial.println("\nConnected!\n");
 
     splitConnectionString();
+
+    Serial.print("Getting current time...");
+    curr_time = WiFi.getTime();
+    while(curr_time == 0)
+    {
+        delay(2000);
+        curr_time = WiFi.getTime();
+        Serial.print(".");
+    }
+
+    Serial.println("\nGot time!");
+
     // create SAS token and user name for connecting to MQTT broker
     url = iothubHost + urlEncode(String("/devices/" + deviceId).c_str());
     devKey = (char *)sharedAccessKey.c_str();
-    expire = getNow() + 864000; //expire in 10 days
+    expire = curr_time + 864000; //expire in 10 days
     sasToken = createIotHubSASToken(devKey, url, expire);
     username = iothubHost + "/" + deviceId + "/api-version=2016-11-14";
     //username = iothubHost + "/" + deviceId + "/?api-version=2018-06-30";
@@ -450,11 +410,15 @@ void setup()
 // arduino message loop - do not do anything in here that will block the loop
 void loop()
 {
-    // if(!wifiClient1.connected())
-    // {
-    //     Serial.println("Connection to IoT Central disrupted - Closing and restarting connection");
-    //     connectToIoTHub();
-    // }
+    if(!wifiClient1.connected())
+    {
+         Serial.println("Lost connection to IoT Central.");
+         mqtt_client->disconnect();
+         wifiClient1.stop();
+         delete(mqtt_client);
+         delay(10000);
+         connectToIoTHub();
+    }
     if (mqtt_client->connected())
     {
         // give the MQTT handler time to do it's thing
