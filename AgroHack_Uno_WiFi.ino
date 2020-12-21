@@ -2,8 +2,6 @@
     with additions:
         * On board watering check for redundancy (in case connection to Azure breaks)
 */
-
-#include <SPI.h>
 #include <WiFiNINA.h>
 #include <WiFiUdp.h>
 #include <Adafruit_Sensor.h>
@@ -69,6 +67,8 @@ static const char IOT_DIRECT_MESSAGE_TOPIC[] = "$iothub/methods/POST/#";
 
 
 // Grab the current time from internet time service
+//replaced by WiFi.getTime() which runs directly on ESP32 and saves Arduino memory
+/*
 unsigned long getNow()
 {
     IPAddress address(129, 6, 15, 28); // time.nist.gov NTP server
@@ -115,7 +115,7 @@ unsigned long getNow()
     }
     Serial.println("Failed to get current time. :(");
     return 0;
-}
+}*/
 
 //Split the connection string into it's composite pieces
 void splitConnectionString()
@@ -303,6 +303,9 @@ void checkWatering()
 // arduino setup function: called once at device startup
 void setup()
 {
+    unsigned long curr_time;
+    int status;
+
     Serial.begin(115200);
 
     while(!Serial) ;    //wait for serial monitor to open
@@ -322,23 +325,32 @@ void setup()
     Serial.println(WiFi.firmwareVersion());
 
     Serial_printf("Attempting to connect to Wi-Fi SSID: %s ", wifi_ssid);
-
-    int status = WiFi.begin(wifi_ssid, wifi_password);
     
-    while (status != WL_CONNECTED)
+    do
     {
-         Serial.print(".");
-        delay(1000);
         status = WiFi.begin(wifi_ssid, wifi_password);
-    }
+        delay(10000);
+        Serial.print(".");
+    }while (status != WL_CONNECTED);
 
     Serial.println("\nConnected!\n");
+
+    Serial.print("Getting current time...");
+    curr_time = WiFi.getTime();
+    while(curr_time == 0)
+    {
+        delay(2000);
+        curr_time = WiFi.getTime();
+        Serial.print(".");
+    }
+
+    Serial.println("\nGot time!");
 
     splitConnectionString();
     // create SAS token and user name for connecting to MQTT broker
     url = iothubHost + urlEncode(String("/devices/" + deviceId).c_str());
     devKey = (char *)sharedAccessKey.c_str();
-    expire = getNow() + 864000; //expire in 10 days
+    expire = curr_time + 864000; //expire in 10 days
     sasToken = createIotHubSASToken(devKey, url, expire);
     username = iothubHost + "/" + deviceId + "/api-version=2016-11-14";
     //username = iothubHost + "/" + deviceId + "/?api-version=2018-06-30";
@@ -354,9 +366,9 @@ void loop()
 {
     if(!wifiClient1.connected())
     {
-        //  this might block the loop, so don't do it
-        //  Serial.println("Connection to IoT Central disrupted - Closing and restarting connection");
-        //  connectToIoTHub();
+        wifiClient1.stop();
+        mqtt_client->disconnect();
+        delete(mqtt_client);
 
         if(lastWateringCheck < WATERING_CHECK_INTERVAL)
         {
@@ -364,7 +376,7 @@ void loop()
             lastWateringCheck = millis();
         }
     }
-    if (mqtt_client->connected())
+    else
     {
         // give the MQTT handler time to do it's thing
         mqtt_client->loop();
